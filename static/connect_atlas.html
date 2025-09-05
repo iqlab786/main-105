@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Connect MongoDB Atlas</title>
+</head>
+<body>
+  <h2>Connect to MongoDB Atlas</h2>
+  <form id="connectForm">
+    <input type="text" id="host" placeholder="Atlas Host (e.g. cluster0.xxxxx.mongodb.net)" required><br>
+    <input type="text" id="username" placeholder="Atlas Username" required><br>
+    <input type="password" id="password" placeholder="Atlas Password" required><br>
+    <input type="text" id="database" placeholder="Database Name" required><br>
+    <button type="submit">Connect</button>
+  </form>
+  <p id="result"></p>
+  <script>
+    document.getElementById('connectForm').onsubmit = async function(e) {
+      e.preventDefault();
+      const host = document.getElementById('host').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const database = document.getElementById('database').value;
+      const access_token = localStorage.getItem('access_token');
+      if (!access_token) {
+        document.getElementById('result').innerText = "Please log in first!";
+        return;
+      }
+      const payload = {
+        host: host,
+        port: null,   // Explicitly null for Atlas
+        username: username,
+        password: password,
+        database: database
+      };
+      const resp = await fetch('http://localhost:8000/db/connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + access_token
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        document.getElementById('result').innerText = 'Connection saved! Redirecting to metadata ingestion...';
+        // Store the connection id for convenience (optional)
+        if (data.id) localStorage.setItem('last_connection_id', data.id);
+        setTimeout(() => window.location.href = "ingest.html", 1400);
+      } else {
+        document.getElementById('result').innerText = 'Error: ' + (data.detail || JSON.stringify(data));
+      }
+    };
+  </script>
+</body>
+</html>

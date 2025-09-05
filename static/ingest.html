@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MongoDB Metadata Discovery</title>
+  <style>
+    table { border-collapse: collapse; margin-top: 1em; }
+    th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+    th { background: #f3f3f3; }
+    .coll-title { margin-top: 2em; font-weight: bold; font-size: 1.1em; }
+    .err { color: red; }
+    .db-title { margin-top: 1em; font-size: 1.15em; color: #336; }
+  </style>
+</head>
+<body>
+  <h2>MongoDB Metadata Ingestion</h2>
+
+  <form id="ingestForm">
+    <label>Select your connection:
+      <select id="connectionSelect"></select>
+    </label>
+    <button type="submit">Ingest Metadata</button>
+  </form>
+
+  <p id="result"></p>
+  <div id="output"></div>
+  <a href="connect_atlas.html">Back to Connect</a>
+  <a href="login.html" style="margin-left:1em">Logout</a>
+
+  <script>
+    // Load user’s db connections and populate dropdown
+    async function fetchConnections() {
+      const token = localStorage.getItem('access_token');
+      if (!token) return [];
+      const resp = await fetch("http://localhost:8000/db/list", {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!resp.ok) return [];
+      return await resp.json();
+    }
+
+    (async function() {
+      const select = document.getElementById('connectionSelect');
+      const opts = await fetchConnections();
+      select.innerHTML = "";
+      if (opts.length === 0) {
+        select.innerHTML = '<option value="">No saved connections found</option>';
+      } else {
+        for (let c of opts) {
+          let label = (c.host || '') + ' / ' + (c.database || '') + ' (id: ' + (c.id || '').slice(0,6) + ')';
+          let option = document.createElement('option');
+          option.value = c.id;
+          option.textContent = label;
+          select.appendChild(option);
+        }
+      }
+    })();
+
+    // On submit, trigger metadata ingestion and display tables
+    document.getElementById('ingestForm').onsubmit = async function(e) {
+      e.preventDefault();
+      const select = document.getElementById('connectionSelect');
+      const connectionId = select.value;
+      const token = localStorage.getItem('access_token');
+      document.getElementById('result').innerText = '';
+      document.getElementById('output').innerHTML = '';
+
+      if (!token) {
+        document.getElementById('result').innerHTML = "<span class='err'>Please log in first!</span>";
+        return;
+      }
+      if (!connectionId) {
+        document.getElementById('result').innerText = "Select a connection!";
+        return;
+      }
+      document.getElementById('result').innerText = "Ingesting metadata... (this may take a few seconds)";
+      const resp = await fetch(`http://localhost:8000/ingest/mongodb/${connectionId}`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        document.getElementById('result').innerHTML =
+          "<span class='err'>Error: " + (data.detail || JSON.stringify(data)) + "</span>";
+        return;
+      }
+      document.getElementById('result').innerText = "Success! Metadata ingested and saved.";
+      // Group by database
+      const dbGroups = {};
+      for(const item of data) {
+        if (!dbGroups[item.database]) dbGroups[item.database] = [];
+        dbGroups[item.database].push(item);
+      }
+      let html = "";
+      for(const dbName in dbGroups) {
+        html += `<div class="db-title">Database: <b>${dbName}</b></div>`;
+        for(const entry of dbGroups[dbName]) {
+          html += `<div class="coll-title">Collection: ${entry.collection}</div>`;
+          html += `<table><thead><tr><th>Field Name</th><th>Type</th></tr></thead><tbody>`;
+          for(const f of entry.fields) {
+            html += `<tr><td>${f.name}</td><td>${f.type}</td></tr>`;
+          }
+          html += `</tbody></table>`;
+        }
+      }
+      document.getElementById('output').innerHTML = html;
+    };
+  </script>
+</body>
+</html>
