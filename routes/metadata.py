@@ -41,3 +41,13 @@ def get_metadata(
     if not metadata:
         raise HTTPException(status_code=404, detail="Metadata not found")
     return metadata
+
+@router.get("/collection/{collection_name}")
+def get_metadata_by_collection(
+    collection_name: str,
+    current_user: dict = Depends(get_current_user)
+):
+    metadata = metadata_service.get_metadata_by_collection(collection_namse, current_user["id"])
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Metadata not found")
+    return metadata

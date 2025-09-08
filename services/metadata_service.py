@@ -5,6 +5,18 @@ from utils.pii_tagger import is_pii_field
 
 metadata_col = db["metadata"]
 
+def convert_objectid_to_str(doc):
+    from bson import ObjectId
+    if isinstance(doc, dict):
+        return {k: convert_objectid_to_str(v) for k, v in doc.items()}
+    elif isinstance(doc, list):
+        return [convert_objectid_to_str(i) for i in doc]
+    elif isinstance(doc, ObjectId):
+        return str(doc)
+    else:
+        return doc
+
+
 def enrich_collection(metadata_id: str, user_id: str, update_data: dict):
     entry = metadata_col.find_one({"_id": ObjectId(metadata_id), "created_by": ObjectId(user_id)})
     if not entry:
@@ -68,7 +80,16 @@ def get_metadata(metadata_id: str, user_id: str):
         raise HTTPException(status_code=404, detail="Metadata not found or unauthorized.")
 
     # Convert ObjectId → str so frontend JSON is clean
-    entry["_id"] = str(entry["_id"])
-    entry["created_by"] = str(entry["created_by"])
+    entry = convert_objectid_to_str(entry)  # ✅ fix
+    return entry
 
+
+def get_metadata_by_collection(collection_name: str, user_id: str):
+    entry = metadata_col.find_one(
+        {"collection_name": collection_name, "created_by": ObjectId(user_id)}
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="Metadata not found or unauthorized.")
+
+    entry = convert_objectid_to_str(entry)  # ✅ fix
     return entry

@@ -195,7 +195,7 @@ async function route(page) {
       await renderAutoPII();
       restorePageState(page);
       break;
-     case "viewMetadata":
+    case "viewMetadata":
       await renderViewMetadata();
       restorePageState(page);
       break;
@@ -693,37 +693,161 @@ function renderEnrichCollection() {
 }
 
 async function renderViewMetadata() {
-  qs("#pageTitle").textContent = "View Metadata";
+  setPageTitle("View Metadata");
   qs("#mainContent").innerHTML = `
     <div class="container">
-      <h5>Metadata Records</h5>
-      <div class="mb-3">
-        <label class="form-label">Select Collection</label>
-        <select id="view_metadataId" class="form-select"></select>
+      <h5 class="mb-3">Metadata Records</h5>
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Select Collection</label>
+          <select id="view_metadataId" class="form-select"></select>
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <button class="btn btn-primary" onclick="fetchMetadata()">
+            <i class="bi bi-search me-1"></i> Fetch Metadata
+          </button>
+        </div>
       </div>
-      <button class="btn btn-sm btn-primary mb-3" onclick="fetchMetadata()">Fetch Metadata</button>
       <div id="metadataResult" class="mt-3"></div>
     </div>
   `;
-
-  ensureMetadataDropdowns(); // already exists in your app
+  ensureMetadataDropdowns();
 }
+
 
 async function fetchMetadata() {
   const id = qs("#view_metadataId").value;
-  if (!id) return;
+  if (!id) return toast("Please select a collection first");
   try {
-    const res = await fetch(`/metadata/${id}`, {
-      headers: { "Authorization": "Bearer " + localStorage.getItem("token") }
-    });
-    const data = await res.json();
-    qs("#metadataResult").innerHTML =
-      "<pre>" + JSON.stringify(data, null, 2) + "</pre>";
+    const data = await apiFetch(`/metadata/${id}`);
+    renderMetadata(data); // 👈 render table instead of raw JSON
   } catch (err) {
     console.error(err);
     qs("#metadataResult").innerHTML =
-      `<div class="alert alert-danger">Failed to load metadata</div>`;
+      `<div class="alert alert-danger">Failed to load metadata: ${escapeHtml(err.message)}</div>`;
   }
+}
+
+
+function renderMetadata(metadata) {
+  const container = qs("#metadataResult");
+  if (!container) return;
+  container.innerHTML = `
+  <div class="card mb-4 shadow-sm border-primary">
+    <div class="card-body">
+      <h5 class="card-title text-primary">
+        <i class="bi bi-collection me-2"></i> Collection Details
+      </h5>
+      <div class="row">
+        <div class="col-md-3"><b>Database:</b> <span class="badge bg-secondary">${metadata.database || "-"}</span></div>
+        <div class="col-md-3"><b>Collection:</b> <span class="badge bg-dark">${metadata.collection || "-"}</span></div>
+        <div class="col-md-3"><b>Total Fields:</b> <span class="badge bg-info">${metadata.fields?.length || 0}</span></div>
+      </div>
+      <div class="row mt-2">
+        <div class="col-md-4"><b>Description:</b> ${metadata.description || "N/A"}</div>
+        <div class="col-md-4"><b>Tags:</b> ${(metadata.tags || []).map(t => `<span class="badge bg-success me-1">${t}</span>`).join("") || "N/A"}</div>
+        <div class="col-md-4"><b>Owner:</b> ${metadata.owner || "N/A"}</div>
+      </div>
+      <div class="row mt-2">
+        <div class="col-md-6"><b>Created By:</b> ${metadata.created_by || "N/A"}</div>
+        <div class="col-md-6"><b>Last Updated:</b> ${metadata.last_updated || "N/A"}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <input id="searchInput" type="text" class="form-control w-25" placeholder="Search fields...">
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th onclick="sortTable(0)" style="cursor:pointer">Field Name ⬍</th>
+          <th onclick="sortTable(1)" style="cursor:pointer">Type ⬍</th>
+          <th>Description</th>
+          <th>Tags</th>
+        </tr>
+      </thead>
+      <tbody id="metadataBody"></tbody>
+    </table>
+  </div>
+`;
+
+
+  const tbody = qs("#metadataBody");
+  tbody.innerHTML = "";
+
+  metadata.fields.forEach((field, index) => {
+    const row = document.createElement("tr");
+    row.className = "cursor-pointer";
+    row.setAttribute("onclick", `toggleDetails(${index})`);
+
+    row.innerHTML = `
+      <td>${field.name}</td>
+      <td><span class="badge bg-secondary">${field.type}</span></td>
+      <td>${field.description || "-"}</td>
+      <td>${(field.tags || []).join(", ")}</td>
+    `;
+
+    const detailsRow = document.createElement("tr");
+    detailsRow.id = `details-${index}`;
+    detailsRow.className = "d-none bg-light";
+    detailsRow.innerHTML = `
+  <td colspan="4">
+    <div class="row">
+      <div class="col"><b>Description:</b> ${field.description || "N/A"}</div>
+      <div class="col"><b>Tags:</b> ${(field.tags || []).join(", ") || "N/A"}</div>
+      <div class="col"><b>Owner:</b> ${field.owner || "N/A"}</div>
+      <div class="col"><b>Created By:</b> ${metadata.created_by || "N/A"}</div>
+      <div class="col"><b>Last Updated:</b> ${field.last_updated || "N/A"}</div>
+      <div class="col"><b>Extra Info:</b> ${field.extra_info || "N/A"}</div>
+    </div>
+  </td>
+`;
+
+    tbody.appendChild(row);
+    tbody.appendChild(detailsRow);
+  });
+
+  // search filter
+  qs("#searchInput").addEventListener("keyup", function () {
+    const filter = this.value.toLowerCase();
+    const rows = tbody.querySelectorAll("tr");
+    rows.forEach(r => {
+      if (r.id.startsWith("details-")) return;
+      r.style.display = r.innerText.toLowerCase().includes(filter) ? "" : "none";
+      const detailsRow = document.getElementById(`details-${r.rowIndex - 1}`);
+      if (detailsRow) detailsRow.style.display = r.style.display;
+    });
+  });
+}
+
+
+function toggleDetails(index) {
+  const detailsRow = document.getElementById(`details-${index}`);
+  if (detailsRow) detailsRow.classList.toggle("d-none");
+}
+
+function sortTable(colIndex) {
+  const tbody = qs("#metadataBody");
+  const rows = Array.from(tbody.querySelectorAll("tr")).filter(r => !r.id.startsWith("details-"));
+  const isAsc = tbody.getAttribute("data-sort") !== "asc";
+
+  rows.sort((a, b) => {
+    const cellA = a.children[colIndex].innerText.toLowerCase();
+    const cellB = b.children[colIndex].innerText.toLowerCase();
+    return isAsc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+  });
+
+  tbody.innerHTML = "";
+  rows.forEach((row, i) => {
+    const idx = row.rowIndex - 1;
+    const detailsRow = document.getElementById(`details-${idx}`);
+    tbody.appendChild(row);
+    if (detailsRow) tbody.appendChild(detailsRow);
+  });
+
+  tbody.setAttribute("data-sort", isAsc ? "asc" : "desc");
 }
 
 
@@ -785,6 +909,12 @@ function renderEnrichField() {
         body: JSON.stringify(body)
       });
       qs("#fieldResult").innerHTML = `<div class="alert alert-success">${escapeHtml(data.msg || "Updated")}</div>`;
+
+      const viewSelect = qs("#view_metadataId");
+      if (viewSelect && viewSelect.value === id) {
+        fetchMetadata(); // re-fetch latest metadata so changes appear immediately
+      }
+
     } catch (e) {
       qs("#fieldResult").innerHTML = `<div class="alert alert-danger">${escapeHtml(e.message)}</div>`;
     } finally {
@@ -859,7 +989,7 @@ function ensureMetadataDropdowns() {
       dashboardState.enrichCollection?.metadataId ||
       dashboardState.enrichField?.metadataId ||
       dashboardState.autoPII?.metadataId;
-      dashboardState.viewMetadata?.metadataId;
+    dashboardState.viewMetadata?.metadataId;
 
     if (lastMetaId) {
       ['metadataId', 'f_metadataId', 'piiMetadataId', 'view_metadataId'].forEach(id => {

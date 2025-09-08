@@ -1,12 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import copy_metadata
+
+datas = [('static', 'static'), ('.env', '.')]
+binaries = []
+hiddenimports = ['passlib.handlers.bcrypt']
+datas += copy_metadata('passlib')
+datas += copy_metadata('pydantic')
+datas += copy_metadata('pydantic-settings')
+datas += copy_metadata('starlette')
+datas += copy_metadata('uvicorn')
+tmp_ret = collect_all('static')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=[],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
